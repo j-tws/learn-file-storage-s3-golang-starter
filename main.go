@@ -107,6 +107,8 @@ func main() {
 		port:             port,
 	}
 
+	getVideoAspectRatio("samples/boots-video-horizontal.mp4")
+
 	err = cfg.ensureAssetsDir()
 	if err != nil {
 		log.Fatalf("Couldn't create assets directory: %v", err)
