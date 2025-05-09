@@ -90,10 +90,24 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	rand.Read(key)
 	objKey :=  "/" + aspectRatio + "/" + base64.RawURLEncoding.EncodeToString(key)
 
+	processedFilePath, err := processVideoForFastStart(file.Name())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error processing video", err)
+		return
+	}
+
+	processedFile, err := os.Open(processedFilePath)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error opening processedFile", nil)
+		return
+	}
+
+	defer processedFile.Close()
+
 	cfg.s3Client.PutObject(context.Background(), &s3.PutObjectInput{
 		Bucket: &cfg.s3Bucket,
 		Key: &objKey,
-		Body: file,
+		Body: processedFile,
 		ContentType: &mimeType,
 	})
 
