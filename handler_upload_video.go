@@ -44,13 +44,13 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	}
 
 	if video.UserID != userID {
-		respondWithError(w, http.StatusUnauthorized, "Not authorized to update this video", nil)
+		respondWithError(w, http.StatusUnauthorized, "Not authorized to update this video", err)
 		return
 	}
 
 	multipartFile, _, err := r.FormFile("video")
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error getting file from form", nil)
+		respondWithError(w, http.StatusInternalServerError, "Error getting file from form", err)
 		return
 	}
 
@@ -58,18 +58,18 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	
 	mimeType, _, err := mime.ParseMediaType("video/mp4")
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error parsing mime type", nil)
+		respondWithError(w, http.StatusInternalServerError, "Error parsing mime type", err)
 		return
 	}
 
 	if mimeType != "video/mp4" {
-		respondWithError(w, http.StatusBadRequest, "Only accepts video/mp4 type", nil)
+		respondWithError(w, http.StatusBadRequest, "Only accepts video/mp4 type", err)
 		return
 	}
 
 	file, err := os.CreateTemp("", "tubely-upload.mp4")
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error creating temp file", nil)
+		respondWithError(w, http.StatusInternalServerError, "Error creating temp file", err)
 		return
 	}
 
@@ -82,7 +82,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 
 	aspectRatio, err := getVideoAspectRatio(file.Name())
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error getting aspect ratio", nil)
+		respondWithError(w, http.StatusInternalServerError, "Error getting aspect ratio", err)
 		return
 	}
 
@@ -98,12 +98,13 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 
 	processedFile, err := os.Open(processedFilePath)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error opening processedFile", nil)
+		respondWithError(w, http.StatusInternalServerError, "Error opening processedFile", err)
 		return
 	}
-
+	
 	defer processedFile.Close()
-
+	
+	
 	cfg.s3Client.PutObject(context.Background(), &s3.PutObjectInput{
 		Bucket: &cfg.s3Bucket,
 		Key: &objKey,
@@ -111,14 +112,22 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		ContentType: &mimeType,
 	})
 
-	url := fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", cfg.s3Bucket, cfg.s3Region, objKey)
-	video.VideoURL = &url
+	videoURL := fmt.Sprintf("%s,%s", cfg.s3Bucket, objKey)
+	video.VideoURL = &videoURL
+
+	fmt.Println("videoURL: "+ videoURL)
 
 	err = cfg.db.UpdateVideo(video)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't update video", err)
 		return
 	}
+	
+	presignedVideo, err := cfg.dbVideoToSignedVideo(video)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't get presignedVideo", err)
+		return
+	}
 
-	respondWithJSON(w, http.StatusOK, video)
+	respondWithJSON(w, http.StatusOK, presignedVideo)
 }
